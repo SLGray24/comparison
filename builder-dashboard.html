@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mortgage Comparison Tool Builder — Gray Home Mortgage</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { --brand: #0c4a6e; --accent: #0ea5e9; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+  .bg-brand { background: var(--brand); }
+  .text-brand { color: var(--brand); }
+  .btn-primary { background: var(--brand); color: white; transition: all .15s; }
+  .btn-primary:hover { background: var(--accent); }
+  .btn-outline { border: 2px solid var(--brand); color: var(--brand); }
+  .btn-outline:hover { background: var(--brand); color: white; }
+  .field-label { font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 4px; }
+  .field-input, .field-select, .field-textarea {
+    width: 100%; border: 1px solid #d1d5db; border-radius: 8px;
+    padding: 8px 12px; font-size: 14px;
+  }
+  .field-input:focus, .field-select:focus, .field-textarea:focus {
+    outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(14,165,233,.25);
+  }
+  .section-card { background: white; border: 1px solid #e5e7eb; border-radius: 16px; padding: 24px; margin-bottom: 16px; }
+  .section-title { font-size: 18px; font-weight: 600; color: var(--brand); margin-bottom: 4px; }
+  .section-sub { font-size: 13px; color: #6b7280; margin-bottom: 16px; }
+  .preview-frame { width: 100%; height: 800px; border: 0; border-radius: 12px; background: white; }
+  .tab-btn { padding: 10px 16px; font-weight: 500; color: #6b7280; cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab-btn.active { color: var(--brand); border-color: var(--brand); }
+  pre.code { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 8px; font-size: 12px; overflow-x: auto; line-height: 1.5; }
+  .copy-btn { background: #334155; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .copy-btn:hover { background: var(--accent); }
+  .saved-row { display: flex; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 8px; }
+  .saved-row:hover { background: #f9fafb; }
+  details > summary { cursor: pointer; list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  .chip { display: inline-block; padding: 2px 8px; background: #e5e7eb; color: #374151; border-radius: 9999px; font-size: 12px; margin: 2px; }
+  .toast { position: fixed; bottom: 24px; right: 24px; background: #059669; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,.15); z-index: 100; animation: slideIn .3s ease-out; }
+  @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-brand text-white shadow-md">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+    <div>
+      <h1 class="text-xl sm:text-2xl font-bold">Mortgage Comparison Tool Builder</h1>
+      <p class="text-sm opacity-80">Generate a custom-branded comparison tool for each loan officer</p>
+    </div>
+    <div class="hidden sm:flex items-center gap-3">
+      <button id="btn-new" class="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-sm font-medium">+ New LO</button>
+      <button id="btn-load" class="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-sm font-medium">My Saved LOs</button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+  <div class="grid lg:grid-cols-5 gap-6">
+
+    <!-- LEFT: FORM -->
+    <div class="lg:col-span-3 space-y-4">
+
+      <!-- LO Profile -->
+      <div class="section-card">
+        <div class="section-title">Loan Officer Profile</div>
+        <p class="section-sub">This information appears in the tool header and on the results page.</p>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <div class="field-label">Full Name *</div>
+            <input id="f-name" class="field-input" placeholder="Sean Gray" />
+          </div>
+          <div>
+            <div class="field-label">NMLS # *</div>
+            <input id="f-nmlsId" class="field-input" placeholder="1523173" />
+          </div>
+          <div>
+            <div class="field-label">Title</div>
+            <input id="f-title" class="field-input" placeholder="Mortgage Loan Officer" />
+          </div>
+          <div>
+            <div class="field-label">Photo URL</div>
+            <input id="f-photoUrl" class="field-input" placeholder="https://..." />
+          </div>
+          <div class="sm:col-span-2">
+            <div class="field-label">Company *</div>
+            <input id="f-company" class="field-input" placeholder="Xpert Home Lending, LLC DBA Gray Home Mortgage" />
+          </div>
+          <div>
+            <div class="field-label">Company NMLS #</div>
+            <input id="f-companyNmlsId" class="field-input" placeholder="2179191" />
+          </div>
+          <div>
+            <div class="field-label">Phone</div>
+            <input id="f-phone" class="field-input" placeholder="(555) 555-5555" />
+          </div>
+          <div>
+            <div class="field-label">Email *</div>
+            <input id="f-email" class="field-input" placeholder="sean@grayhomemortgage.com" />
+          </div>
+          <div>
+            <div class="field-label">Website</div>
+            <input id="f-website" class="field-input" placeholder="https://grayhomemortgage.com/" />
+          </div>
+          <div class="sm:col-span-2">
+            <div class="field-label">Booking / Consultation Link *</div>
+            <input id="f-bookingLink" class="field-input" placeholder="https://app.reclaim.ai/m/sean-grayhomemortgage/consultation" />
+          </div>
+          <div class="sm:col-span-2">
+            <div class="field-label">1003 Application Link</div>
+            <input id="f-applicationLink" class="field-input" placeholder="https://2179191.my1003app.com/1523173/register" />
+          </div>
+          <div>
+            <div class="field-label">States Licensed (comma-separated) *</div>
+            <input id="f-statesLicensed" class="field-input" placeholder="AZ, IL, TN" />
+          </div>
+          <div>
+            <div class="field-label">Brand Color</div>
+            <div class="flex gap-2">
+              <input id="f-brandColor" type="color" value="#0c4a6e" class="h-10 w-14 border border-gray-300 rounded-lg cursor-pointer" />
+              <input id="f-brandColorHex" class="field-input" value="#0c4a6e" />
+            </div>
+          </div>
+          <div>
+            <div class="field-label">Accent Color</div>
+            <div class="flex gap-2">
+              <input id="f-accentColor" type="color" value="#0ea5e9" class="h-10 w-14 border border-gray-300 rounded-lg cursor-pointer" />
+              <input id="f-accentColorHex" class="field-input" value="#0ea5e9" />
+            </div>
+          </div>
+        </div>
+
+        <details class="mt-4">
+          <summary class="text-sm font-medium text-brand">Social handles (optional)</summary>
+          <div class="grid sm:grid-cols-3 gap-4 mt-3">
+            <div>
+              <div class="field-label">Facebook</div>
+              <input id="f-facebook" class="field-input" placeholder="sgraymlo" />
+            </div>
+            <div>
+              <div class="field-label">Instagram</div>
+              <input id="f-instagram" class="field-input" placeholder="sgraymlo" />
+            </div>
+            <div>
+              <div class="field-label">LinkedIn</div>
+              <input id="f-linkedin" class="field-input" placeholder="seangraymlo" />
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Tool Copy -->
+      <div class="section-card">
+        <div class="section-title">Tool Copy</div>
+        <p class="section-sub">The headlines visitors see on the landing screen.</p>
+        <div>
+          <div class="field-label">Headline</div>
+          <input id="f-headline" class="field-input" placeholder="See How Your Mortgage Quote Stacks Up" />
+        </div>
+        <div class="mt-3">
+          <div class="field-label">Subheadline</div>
+          <input id="f-subheadline" class="field-input" placeholder="Get a side-by-side, no-pressure comparison in under 2 minutes." />
+        </div>
+      </div>
+
+      <!-- Estimate Logic -->
+      <div class="section-card">
+        <div class="section-title">Estimate Logic</div>
+        <p class="section-sub">How aggressive should the comparison numbers be?</p>
+        <div class="space-y-3">
+          <label class="flex items-start gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:border-brand">
+            <input type="radio" name="estimateMode" value="conservative" checked class="mt-1" />
+            <div>
+              <div class="font-medium text-sm">Conservative — illustrative range only (Recommended)</div>
+              <div class="text-xs text-gray-600">Shows a rate range and savings range. Lowest compliance risk. Best for cold leads.</div>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:border-brand">
+            <input type="radio" name="estimateMode" value="specific" class="mt-1" />
+            <div>
+              <div class="font-medium text-sm">Specific — uses your configured pricing below</div>
+              <div class="text-xs text-gray-600">Shows one specific rate from your pricing config. Higher conversion. Make sure pricing is current.</div>
+            </div>
+          </label>
+        </div>
+
+        <div class="mt-5">
+          <div class="field-label">Your Base Rates by Loan Type (informational use only)</div>
+          <p class="text-xs text-gray-600 mb-3">Used in "specific" mode and as a center point in "conservative" mode. These should reflect your typical par rate for a well-qualified borrower.</p>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div>
+              <div class="field-label">Conventional 30-yr</div>
+              <input id="f-pricing-conventional30" type="number" step="0.001" class="field-input" placeholder="6.875" />
+            </div>
+            <div>
+              <div class="field-label">Conventional 15-yr</div>
+              <input id="f-pricing-conventional15" type="number" step="0.001" class="field-input" placeholder="6.125" />
+            </div>
+            <div>
+              <div class="field-label">FHA 30-yr</div>
+              <input id="f-pricing-fha30" type="number" step="0.001" class="field-input" placeholder="6.500" />
+            </div>
+            <div>
+              <div class="field-label">VA 30-yr</div>
+              <input id="f-pricing-va30" type="number" step="0.001" class="field-input" placeholder="6.375" />
+            </div>
+            <div>
+              <div class="field-label">Jumbo 30-yr</div>
+              <input id="f-pricing-jumbo30" type="number" step="0.001" class="field-input" placeholder="7.000" />
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-5">
+          <div class="field-label">Your Typical Lender Fees (used in fee comparison)</div>
+          <div class="grid sm:grid-cols-3 gap-3">
+            <div>
+              <div class="field-label">Origination</div>
+              <input id="f-fees-origination" type="number" class="field-input" placeholder="995" />
+            </div>
+            <div>
+              <div class="field-label">Underwriting</div>
+              <input id="f-fees-underwriting" type="number" class="field-input" placeholder="0" />
+            </div>
+            <div>
+              <div class="field-label">Processing</div>
+              <input id="f-fees-processing" type="number" class="field-input" placeholder="0" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lead Capture -->
+      <div class="section-card">
+        <div class="section-title">Lead Capture Webhook</div>
+        <p class="section-sub">Paste your Google Apps Script Web App URL. Leads will POST here automatically. (See the setup README for step-by-step instructions.)</p>
+        <div>
+          <div class="field-label">Google Apps Script Webhook URL</div>
+          <input id="f-webhookUrl" class="field-input" placeholder="https://script.google.com/macros/s/AKfycb.../exec" />
+        </div>
+        <p class="text-xs text-gray-500 mt-2">Leave blank to log leads to the browser console only (for testing).</p>
+      </div>
+
+      <!-- Compliance -->
+      <div class="section-card">
+        <div class="section-title">Compliance Footer</div>
+        <p class="section-sub">This text appears in the footer of every page of the tool. Customize per your state and company requirements.</p>
+        <textarea id="f-complianceFooter" class="field-textarea" rows="4">Xpert Home Lending, LLC DBA Gray Home Mortgage. NMLS #2179191. Licensed in AZ, IL, TN. Equal Housing Lender. All loans subject to credit approval. Rates, terms, and availability subject to change without notice. This tool provides an illustrative comparison only and is not an offer to extend credit or a commitment to lend. APR may vary based on final loan terms.</textarea>
+      </div>
+
+      <!-- Actions -->
+      <div class="section-card bg-blue-50 border-blue-200">
+        <div class="section-title">Build & Deploy</div>
+        <p class="section-sub">When you're ready, generate the tool. It includes everything baked in — no servers required.</p>
+        <div class="flex flex-wrap gap-3">
+          <button id="btn-generate" class="btn-primary px-6 py-3 rounded-lg font-semibold">Generate Tool &rarr;</button>
+          <button id="btn-preview" class="btn-outline px-6 py-3 rounded-lg font-semibold">Update Preview</button>
+          <button id="btn-save" class="bg-white border border-gray-300 px-6 py-3 rounded-lg font-medium text-gray-700 hover:bg-gray-50">Save Draft</button>
+          <button id="btn-export-config" class="bg-white border border-gray-300 px-6 py-3 rounded-lg font-medium text-gray-700 hover:bg-gray-50">Export Config (JSON)</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: PREVIEW & OUTPUT -->
+    <div class="lg:col-span-2">
+      <div class="section-card sticky top-4">
+        <div class="flex items-center justify-between mb-3">
+          <div class="section-title mb-0">Output</div>
+          <div class="flex border-b border-gray-200">
+            <button class="tab-btn active" data-tab="preview">Preview</button>
+            <button class="tab-btn" data-tab="download">Download</button>
+            <button class="tab-btn" data-tab="embed">Embed</button>
+          </div>
+        </div>
+
+        <div id="tab-preview" class="tab-content">
+          <p class="text-xs text-gray-500 mb-3">Click <strong>Update Preview</strong> to refresh after changes.</p>
+          <iframe id="preview-iframe" class="preview-frame" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
+        </div>
+
+        <div id="tab-download" class="tab-content hidden">
+          <p class="text-sm text-gray-700 mb-3">After clicking <strong>Generate Tool</strong>, your customized HTML file will download. Upload it to your website (Squarespace, WordPress, custom site — any hosting works) and link to it from your page.</p>
+          <div id="download-area" class="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
+            Generate the tool first to enable download.
+          </div>
+        </div>
+
+        <div id="tab-embed" class="tab-content hidden">
+          <p class="text-sm text-gray-700 mb-3">Paste this iframe code wherever you want the tool to appear on your site. Replace the URL with the location where you uploaded your generated HTML file.</p>
+          <div class="relative">
+            <pre class="code" id="embed-code">&lt;!-- Replace with your hosted file URL --&gt;
+&lt;iframe src="https://yoursite.com/mortgage-comparison.html"
+  width="100%" height="900" frameborder="0"
+  style="border:0; max-width:900px;"&gt;
+&lt;/iframe&gt;</pre>
+            <button class="copy-btn absolute top-2 right-2" data-copy="embed-code">Copy</button>
+          </div>
+          <div class="mt-4 text-xs text-gray-500">
+            <strong>Tip:</strong> If your customers prefer a full-page experience, link to the HTML file directly instead of embedding it.
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- Saved LOs Drawer -->
+<div id="saved-drawer" class="fixed inset-0 bg-black/50 z-50 hidden" onclick="if(event.target===this)closeDrawer()">
+  <div class="absolute right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-2xl p-6 overflow-y-auto">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold text-brand">Saved Loan Officers</h2>
+      <button onclick="closeDrawer()" class="text-gray-500 hover:text-gray-700">&times;</button>
+    </div>
+    <div id="saved-list" class="space-y-2"></div>
+  </div>
+</div>
+
+<!-- Comparison tool template (embedded so we can inject config and download) -->
+<script id="tool-template" type="text/plain">
+__TEMPLATE_PLACEHOLDER__
+</script>
+
+<script>
+// ============================================================================
+// CONFIG SCHEMA & DEFAULTS
+// ============================================================================
+const DEFAULTS = {
+  name: '',
+  nmlsId: '',
+  title: 'Mortgage Loan Officer',
+  photoUrl: '',
+  company: '',
+  companyNmlsId: '',
+  phone: '',
+  email: '',
+  website: '',
+  bookingLink: '',
+  applicationLink: '',
+  brandColor: '#0c4a6e',
+  accentColor: '#0ea5e9',
+  statesLicensed: [],
+  social: { facebook: '', instagram: '', linkedin: '' },
+  estimateMode: 'conservative',
+  pricing: { conventional30: 6.875, conventional15: 6.125, fha30: 6.5, va30: 6.375, jumbo30: 7.0 },
+  fees: { origination: 995, underwriting: 0, processing: 0 },
+  webhookUrl: '',
+  complianceFooter: '',
+  headline: 'See How Your Mortgage Quote Stacks Up',
+  subheadline: 'Get a side-by-side, no-pressure comparison in under 2 minutes.'
+};
+
+// Storage helpers (localStorage — works when this file is hosted on real site)
+const STORE_KEY = 'mortgageToolBuilder.savedLOs';
+function getSaved() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch { return []; } }
+function setSaved(list) { try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); } catch (e) { console.warn('localStorage unavailable', e); } }
+
+// ============================================================================
+// PRESET — Sean's profile to seed the form
+// ============================================================================
+const SEAN_PRESET = {
+  name: 'Sean Gray',
+  nmlsId: '1523173',
+  title: 'Mortgage Loan Officer',
+  photoUrl: '',
+  company: 'Xpert Home Lending, LLC DBA Gray Home Mortgage',
+  companyNmlsId: '2179191',
+  phone: '',
+  email: 'sean@grayhomemortgage.com',
+  website: 'https://grayhomemortgage.com/',
+  bookingLink: 'https://app.reclaim.ai/m/sean-grayhomemortgage/consultation',
+  applicationLink: 'https://2179191.my1003app.com/1523173/register',
+  brandColor: '#0c4a6e',
+  accentColor: '#0ea5e9',
+  statesLicensed: ['AZ', 'IL', 'TN'],
+  social: { facebook: 'sgraymlo', instagram: 'sgraymlo', linkedin: 'seangraymlo' },
+  estimateMode: 'conservative',
+  pricing: { conventional30: 6.875, conventional15: 6.125, fha30: 6.5, va30: 6.375, jumbo30: 7.0 },
+  fees: { origination: 995, underwriting: 0, processing: 0 },
+  webhookUrl: '',
+  complianceFooter: 'Xpert Home Lending, LLC DBA Gray Home Mortgage. NMLS #2179191. Licensed in AZ, IL, TN. Equal Housing Lender. All loans subject to credit approval. Rates, terms, and availability subject to change without notice. This tool provides an illustrative comparison only and is not an offer to extend credit or a commitment to lend. APR may vary based on final loan terms.',
+  headline: 'See How Your Mortgage Quote Stacks Up',
+  subheadline: 'Get a side-by-side, no-pressure comparison in under 2 minutes.'
+};
+
+// ============================================================================
+// FORM <-> CONFIG
+// ============================================================================
+function getFormConfig() {
+  const v = (id) => document.getElementById(id)?.value || '';
+  const states = v('f-statesLicensed').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+  return {
+    name: v('f-name'),
+    nmlsId: v('f-nmlsId'),
+    title: v('f-title') || 'Mortgage Loan Officer',
+    photoUrl: v('f-photoUrl'),
+    company: v('f-company'),
+    companyNmlsId: v('f-companyNmlsId'),
+    phone: v('f-phone'),
+    email: v('f-email'),
+    website: v('f-website'),
+    bookingLink: v('f-bookingLink'),
+    applicationLink: v('f-applicationLink'),
+    brandColor: v('f-brandColor'),
+    accentColor: v('f-accentColor'),
+    statesLicensed: states,
+    social: { facebook: v('f-facebook'), instagram: v('f-instagram'), linkedin: v('f-linkedin') },
+    estimateMode: document.querySelector('input[name="estimateMode"]:checked')?.value || 'conservative',
+    pricing: {
+      conventional30: parseFloat(v('f-pricing-conventional30')) || 6.875,
+      conventional15: parseFloat(v('f-pricing-conventional15')) || 6.125,
+      fha30: parseFloat(v('f-pricing-fha30')) || 6.5,
+      va30: parseFloat(v('f-pricing-va30')) || 6.375,
+      jumbo30: parseFloat(v('f-pricing-jumbo30')) || 7.0
+    },
+    fees: {
+      origination: parseFloat(v('f-fees-origination')) || 0,
+      underwriting: parseFloat(v('f-fees-underwriting')) || 0,
+      processing: parseFloat(v('f-fees-processing')) || 0
+    },
+    webhookUrl: v('f-webhookUrl'),
+    complianceFooter: v('f-complianceFooter'),
+    headline: v('f-headline'),
+    subheadline: v('f-subheadline')
+  };
+}
+
+function setForm(cfg) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+  set('f-name', cfg.name);
+  set('f-nmlsId', cfg.nmlsId);
+  set('f-title', cfg.title);
+  set('f-photoUrl', cfg.photoUrl);
+  set('f-company', cfg.company);
+  set('f-companyNmlsId', cfg.companyNmlsId);
+  set('f-phone', cfg.phone);
+  set('f-email', cfg.email);
+  set('f-website', cfg.website);
+  set('f-bookingLink', cfg.bookingLink);
+  set('f-applicationLink', cfg.applicationLink);
+  set('f-brandColor', cfg.brandColor);
+  set('f-brandColorHex', cfg.brandColor);
+  set('f-accentColor', cfg.accentColor);
+  set('f-accentColorHex', cfg.accentColor);
+  set('f-statesLicensed', (cfg.statesLicensed || []).join(', '));
+  set('f-facebook', cfg.social?.facebook);
+  set('f-instagram', cfg.social?.instagram);
+  set('f-linkedin', cfg.social?.linkedin);
+  set('f-pricing-conventional30', cfg.pricing?.conventional30);
+  set('f-pricing-conventional15', cfg.pricing?.conventional15);
+  set('f-pricing-fha30', cfg.pricing?.fha30);
+  set('f-pricing-va30', cfg.pricing?.va30);
+  set('f-pricing-jumbo30', cfg.pricing?.jumbo30);
+  set('f-fees-origination', cfg.fees?.origination);
+  set('f-fees-underwriting', cfg.fees?.underwriting);
+  set('f-fees-processing', cfg.fees?.processing);
+  set('f-webhookUrl', cfg.webhookUrl);
+  set('f-complianceFooter', cfg.complianceFooter);
+  set('f-headline', cfg.headline);
+  set('f-subheadline', cfg.subheadline);
+  const modeInput = document.querySelector(`input[name="estimateMode"][value="${cfg.estimateMode || 'conservative'}"]`);
+  if (modeInput) modeInput.checked = true;
+}
+
+// ============================================================================
+// COLOR PICKER SYNC
+// ============================================================================
+function bindColorSync(picker, hex) {
+  const p = document.getElementById(picker);
+  const h = document.getElementById(hex);
+  p.addEventListener('input', () => { h.value = p.value; });
+  h.addEventListener('input', () => { if (/^#[0-9a-f]{6}$/i.test(h.value)) p.value = h.value; });
+}
+bindColorSync('f-brandColor', 'f-brandColorHex');
+bindColorSync('f-accentColor', 'f-accentColorHex');
+
+// ============================================================================
+// GENERATE TOOL HTML
+// ============================================================================
+async function fetchToolTemplate() {
+  // Try to fetch sibling file
+  try {
+    const res = await fetch('comparison-tool.html');
+    if (res.ok) {
+      const txt = await res.text();
+      if (txt.length > 1000) return txt;
+    }
+  } catch (e) { /* offline / file:// */ }
+  // Fallback: embedded template (loaded into #tool-template)
+  const embed = document.getElementById('tool-template').textContent.trim();
+  if (embed && !embed.includes('__TEMPLATE_PLACEHOLDER__')) return embed;
+  throw new Error('Could not load comparison-tool.html template. Make sure comparison-tool.html is in the same folder as this dashboard, or paste the template into the page.');
+}
+
+function injectConfig(templateHtml, cfg) {
+  const jsonBlock = JSON.stringify(cfg, null, 2);
+  // Replace the JSON inside <script id="lo-config" type="application/json">...</script>
+  const re = /(<script\s+id=["']lo-config["'][^>]*>)([\s\S]*?)(<\/script>)/i;
+  if (!re.test(templateHtml)) {
+    console.warn('Could not find lo-config script block. Appending instead.');
+    return templateHtml.replace('</head>', `<script id="lo-config" type="application/json">${jsonBlock}</script></head>`);
+  }
+  return templateHtml.replace(re, `$1\n${jsonBlock}\n$3`);
+}
+
+async function generateTool() {
+  const cfg = getFormConfig();
+  const errors = validateConfig(cfg);
+  if (errors.length) {
+    alert('Please fix the following:\n\n' + errors.join('\n'));
+    return;
+  }
+
+  try {
+    const tpl = await fetchToolTemplate();
+    const html = injectConfig(tpl, cfg);
+    const slug = (cfg.name || 'mortgage-tool').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const filename = `mortgage-comparison-${slug}.html`;
+
+    // Trigger download
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    // Update download tab
+    document.getElementById('download-area').innerHTML = `
+      <div class="space-y-3">
+        <div class="p-3 bg-emerald-50 border border-emerald-200 rounded text-sm text-emerald-800">
+          <strong>Done!</strong> Your file <code>${filename}</code> has been downloaded.
+        </div>
+        <div class="text-sm text-gray-700">
+          <strong>Next steps:</strong>
+          <ol class="list-decimal pl-5 mt-2 space-y-1 text-xs">
+            <li>Upload <code>${filename}</code> to your website hosting (or any static host like Netlify, Vercel, GitHub Pages, S3).</li>
+            <li>Copy the URL where the file lives (e.g. <code>https://${cfg.website?.replace(/^https?:\/\//,'').replace(/\/$/,'') || 'yoursite.com'}/${filename}</code>).</li>
+            <li>Either link to it directly from a page, or use the <strong>Embed</strong> tab to drop it inside an existing page.</li>
+          </ol>
+        </div>
+        <button id="btn-regen" class="btn-primary px-4 py-2 rounded text-sm">Re-download</button>
+      </div>
+    `;
+    document.getElementById('btn-regen').addEventListener('click', generateTool);
+
+    // Update embed code
+    const cleanWebsite = (cfg.website || '').replace(/^https?:\/\//, '').replace(/\/$/, '') || 'yoursite.com';
+    document.getElementById('embed-code').innerHTML = `&lt;!-- Embed code for ${cfg.name}'s Mortgage Comparison Tool --&gt;
+&lt;iframe src="https://${cleanWebsite}/${filename}"
+  width="100%" height="900" frameborder="0"
+  style="border:0; max-width:900px;"
+  title="Mortgage Comparison Tool"&gt;
+&lt;/iframe&gt;`;
+
+    toast('Tool generated and downloaded!');
+    setActiveTab('download');
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+function validateConfig(cfg) {
+  const errs = [];
+  if (!cfg.name) errs.push('• Full Name is required');
+  if (!cfg.nmlsId) errs.push('• NMLS # is required');
+  if (!cfg.company) errs.push('• Company is required');
+  if (!cfg.email) errs.push('• Email is required');
+  if (!cfg.bookingLink) errs.push('• Booking link is required');
+  if (!cfg.statesLicensed.length) errs.push('• At least one state is required');
+  if (cfg.bookingLink && !/^https?:\/\//.test(cfg.bookingLink)) errs.push('• Booking link must be a full URL starting with https://');
+  return errs;
+}
+
+// ============================================================================
+// PREVIEW
+// ============================================================================
+async function updatePreview() {
+  try {
+    const cfg = getFormConfig();
+    const tpl = await fetchToolTemplate();
+    const html = injectConfig(tpl, cfg);
+    const iframe = document.getElementById('preview-iframe');
+    iframe.srcdoc = html;
+  } catch (e) {
+    console.error(e);
+    document.getElementById('preview-iframe').srcdoc = `<div style="padding:20px;font-family:sans-serif;color:#dc2626">Preview unavailable: ${e.message}<br><br>Make sure <code>comparison-tool.html</code> is in the same folder as this dashboard file.</div>`;
+  }
+}
+
+// ============================================================================
+// SAVED LOs
+// ============================================================================
+function openDrawer() {
+  document.getElementById('saved-drawer').classList.remove('hidden');
+  renderSavedList();
+}
+function closeDrawer() { document.getElementById('saved-drawer').classList.add('hidden'); }
+window.closeDrawer = closeDrawer;
+
+function renderSavedList() {
+  const list = getSaved();
+  const el = document.getElementById('saved-list');
+  if (!list.length) {
+    el.innerHTML = `<p class="text-sm text-gray-500">No saved loan officers yet. Fill the form and click <strong>Save Draft</strong>.</p>`;
+    return;
+  }
+  el.innerHTML = list.map((it, i) => `
+    <div class="saved-row">
+      <div class="min-w-0">
+        <div class="font-medium text-sm truncate">${it.cfg.name || '(no name)'}</div>
+        <div class="text-xs text-gray-500 truncate">${it.cfg.email || ''} · NMLS #${it.cfg.nmlsId || '—'}</div>
+        <div class="text-xs text-gray-400">Saved ${new Date(it.savedAt).toLocaleDateString()}</div>
+      </div>
+      <div class="flex gap-2">
+        <button data-load="${i}" class="text-xs btn-primary px-3 py-1 rounded">Load</button>
+        <button data-delete="${i}" class="text-xs bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded">Delete</button>
+      </div>
+    </div>
+  `).join('');
+  el.querySelectorAll('[data-load]').forEach(b => b.addEventListener('click', () => {
+    const idx = parseInt(b.dataset.load, 10);
+    setForm(list[idx].cfg);
+    closeDrawer();
+    toast('Loaded ' + (list[idx].cfg.name || 'draft'));
+  }));
+  el.querySelectorAll('[data-delete]').forEach(b => b.addEventListener('click', () => {
+    const idx = parseInt(b.dataset.delete, 10);
+    if (!confirm('Delete this saved loan officer?')) return;
+    list.splice(idx, 1);
+    setSaved(list);
+    renderSavedList();
+  }));
+}
+
+function saveDraft() {
+  const cfg = getFormConfig();
+  if (!cfg.name) { alert('Add a name first so this draft can be identified.'); return; }
+  const list = getSaved();
+  const existingIdx = list.findIndex(it => it.cfg.email === cfg.email && cfg.email);
+  const entry = { cfg, savedAt: Date.now() };
+  if (existingIdx >= 0) list[existingIdx] = entry;
+  else list.push(entry);
+  setSaved(list);
+  toast('Draft saved');
+}
+
+function exportConfigJson() {
+  const cfg = getFormConfig();
+  const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const slug = (cfg.name || 'lo-config').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  a.href = url; a.download = `${slug}-config.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ============================================================================
+// TABS
+// ============================================================================
+function setActiveTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => {
+    c.classList.toggle('hidden', c.id !== `tab-${name}`);
+  });
+  if (name === 'preview') updatePreview();
+}
+document.querySelectorAll('.tab-btn').forEach(b => {
+  b.addEventListener('click', () => setActiveTab(b.dataset.tab));
+});
+
+// ============================================================================
+// COPY BUTTONS
+// ============================================================================
+document.querySelectorAll('[data-copy]').forEach(b => {
+  b.addEventListener('click', () => {
+    const el = document.getElementById(b.dataset.copy);
+    const txt = el.textContent;
+    navigator.clipboard.writeText(txt).then(() => toast('Copied!'));
+  });
+});
+
+// ============================================================================
+// TOAST
+// ============================================================================
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2000);
+}
+
+// ============================================================================
+// WIRING
+// ============================================================================
+document.getElementById('btn-generate').addEventListener('click', generateTool);
+document.getElementById('btn-preview').addEventListener('click', updatePreview);
+document.getElementById('btn-save').addEventListener('click', saveDraft);
+document.getElementById('btn-export-config').addEventListener('click', exportConfigJson);
+document.getElementById('btn-new').addEventListener('click', () => {
+  if (confirm('Clear the form and start a new loan officer profile?')) {
+    setForm(DEFAULTS);
+    toast('New profile started');
+  }
+});
+document.getElementById('btn-load').addEventListener('click', openDrawer);
+
+// Seed form with Sean's profile
+setForm(SEAN_PRESET);
+// Initial preview
+setTimeout(updatePreview, 300);
+</script>
+</body>
+</html>

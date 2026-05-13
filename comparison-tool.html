@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mortgage Comparison Tool</title>
+<meta name="description" content="See how your mortgage quote compares. Educational comparison tool — not an offer of credit." />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root {
+    --brand: #0c4a6e;
+    --accent: #0ea5e9;
+    --brand-soft: #e0f2fe;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+  .btn-primary { background: var(--brand); color: white; transition: all .15s; }
+  .btn-primary:hover { background: var(--accent); }
+  .btn-outline { border: 2px solid var(--brand); color: var(--brand); transition: all .15s; }
+  .btn-outline:hover { background: var(--brand); color: white; }
+  .text-brand { color: var(--brand); }
+  .bg-brand { background: var(--brand); }
+  .bg-brand-soft { background: var(--brand-soft); }
+  .ring-brand:focus { outline: none; box-shadow: 0 0 0 3px rgba(14,165,233,.35); border-color: var(--accent); }
+  .step-dot { width: 32px; height: 32px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; }
+  .step-dot.active { background: var(--brand); color: white; }
+  .step-dot.done { background: #10b981; color: white; }
+  .step-dot.todo { background: #e5e7eb; color: #6b7280; }
+  .savings-positive { color: #059669; }
+  .savings-negative { color: #dc2626; }
+  .savings-neutral { color: #6b7280; }
+  .disclaimer { font-size: 11px; color: #6b7280; line-height: 1.5; }
+  .field-error { border-color: #dc2626 !important; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { animation: spin 1s linear infinite; }
+  .fade-in { animation: fadeIn .25s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+
+<!-- ===================== LOAN OFFICER CONFIG ===================== -->
+<!-- This block is replaced by the Builder Dashboard for each LO -->
+<script id="lo-config" type="application/json">
+{
+  "name": "Sean Gray",
+  "nmlsId": "1523173",
+  "title": "Mortgage Loan Officer",
+  "photoUrl": "",
+  "company": "Xpert Home Lending, LLC DBA Gray Home Mortgage",
+  "companyNmlsId": "2179191",
+  "phone": "",
+  "email": "sean@grayhomemortgage.com",
+  "website": "https://grayhomemortgage.com/",
+  "bookingLink": "https://app.reclaim.ai/m/sean-grayhomemortgage/consultation",
+  "applicationLink": "https://2179191.my1003app.com/1523173/register",
+  "brandColor": "#0c4a6e",
+  "accentColor": "#0ea5e9",
+  "statesLicensed": ["AZ", "IL", "TN"],
+  "social": {
+    "facebook": "sgraymlo",
+    "instagram": "sgraymlo",
+    "linkedin": "seangraymlo"
+  },
+  "estimateMode": "conservative",
+  "pricing": {
+    "conventional30": 6.875,
+    "conventional15": 6.125,
+    "fha30": 6.500,
+    "va30": 6.375,
+    "jumbo30": 7.000
+  },
+  "fees": {
+    "origination": 995,
+    "underwriting": 0,
+    "processing": 0
+  },
+  "webhookUrl": "",
+  "complianceFooter": "Xpert Home Lending, LLC DBA Gray Home Mortgage. NMLS #2179191. Licensed in AZ, IL, TN. Equal Housing Lender. All loans subject to credit approval. Rates, terms, and availability subject to change without notice. This tool provides an illustrative comparison only and is not an offer to extend credit or a commitment to lend. APR may vary based on final loan terms.",
+  "headline": "See How Your Mortgage Quote Stacks Up",
+  "subheadline": "Get a side-by-side, no-pressure comparison in under 2 minutes."
+}
+</script>
+<!-- =================== END LOAN OFFICER CONFIG =================== -->
+
+<div id="app" class="min-h-screen flex flex-col"></div>
+
+<script>
+// ============================================================================
+// LOAD CONFIG
+// ============================================================================
+const LO = JSON.parse(document.getElementById('lo-config').textContent);
+document.documentElement.style.setProperty('--brand', LO.brandColor || '#0c4a6e');
+document.documentElement.style.setProperty('--accent', LO.accentColor || '#0ea5e9');
+document.title = `Mortgage Comparison Tool — ${LO.name}`;
+
+// PDF.js worker
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+// ============================================================================
+// STATE
+// ============================================================================
+const state = {
+  step: 'intro',          // intro | upload | manual | review | leadcapture | results
+  path: null,             // 'upload' | 'manual'
+  quote: {
+    loanAmount: '',
+    interestRate: '',
+    termYears: 30,
+    loanType: 'conventional',
+    monthlyPI: '',
+    points: 0,
+    lenderCredits: 0,
+    closingCosts: '',
+    propertyTaxes: '',
+    insurance: '',
+    pmi: '',
+    homeValue: '',
+    zip: '',
+    purpose: 'purchase',
+    creditScore: '740+',
+    occupancy: 'primary'
+  },
+  lead: { firstName: '', lastName: '', email: '', phone: '', consent: false, tcpa: false },
+  results: null,
+  pdfText: null,
+  pdfError: null,
+  submitting: false
+};
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+const $ = (sel, ctx = document) => ctx.querySelector(sel);
+const fmtMoney = (n) => isFinite(n) ? '$' + Math.round(n).toLocaleString('en-US') : '—';
+const fmtMoneyCents = (n) => isFinite(n) ? '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '—';
+const fmtPct = (n, decimals = 3) => isFinite(n) ? Number(n).toFixed(decimals) + '%' : '—';
+const parseNum = (s) => {
+  if (s === null || s === undefined || s === '') return NaN;
+  const cleaned = String(s).replace(/[^0-9.\-]/g, '');
+  return cleaned === '' ? NaN : parseFloat(cleaned);
+};
+
+function monthlyPI(principal, annualRate, termYears) {
+  const r = annualRate / 100 / 12;
+  const n = termYears * 12;
+  if (!isFinite(r) || !isFinite(n) || n <= 0) return NaN;
+  if (r === 0) return principal / n;
+  return principal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+}
+
+function totalInterest(principal, annualRate, termYears) {
+  const mp = monthlyPI(principal, annualRate, termYears);
+  return (mp * termYears * 12) - principal;
+}
+
+function validateEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }
+function validatePhone(p) { return String(p).replace(/\D/g, '').length >= 10; }
+
+// ============================================================================
+// PDF PARSING (best-effort extraction from a Loan Estimate or quote sheet)
+// ============================================================================
+async function extractPdfText(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(it => it.str).join(' ') + '\n';
+  }
+  return text;
+}
+
+function parseLoanEstimate(text) {
+  const out = {};
+  const cleaned = text.replace(/\s+/g, ' ');
+
+  // Loan amount
+  const loanAmountMatch = cleaned.match(/Loan\s+Amount[\s:]*\$?([\d,]+)/i);
+  if (loanAmountMatch) out.loanAmount = loanAmountMatch[1].replace(/,/g, '');
+
+  // Interest rate
+  const rateMatch = cleaned.match(/Interest\s+Rate[\s:]*([\d.]+)\s*%/i) ||
+                    cleaned.match(/Rate[\s:]*([\d.]+)\s*%/i);
+  if (rateMatch) out.interestRate = rateMatch[1];
+
+  // Term
+  const termMatch = cleaned.match(/(\d{1,2})\s*year[s]?/i) ||
+                    cleaned.match(/Loan\s+Term[\s:]*(\d{1,2})/i);
+  if (termMatch) out.termYears = parseInt(termMatch[1], 10);
+
+  // Monthly P&I
+  const piMatch = cleaned.match(/Principal\s*(?:&|and)\s*Interest[\s:]*\$?([\d,]+(?:\.\d{1,2})?)/i) ||
+                  cleaned.match(/Monthly\s+Principal\s*(?:&|and)\s*Interest[\s:]*\$?([\d,]+)/i);
+  if (piMatch) out.monthlyPI = piMatch[1].replace(/,/g, '');
+
+  // Closing costs / total
+  const closingMatch = cleaned.match(/Estimated\s+Closing\s+Costs[\s:]*\$?([\d,]+)/i) ||
+                       cleaned.match(/Total\s+(?:Closing|Settlement)\s+Costs[\s:]*\$?([\d,]+)/i);
+  if (closingMatch) out.closingCosts = closingMatch[1].replace(/,/g, '');
+
+  // Property taxes
+  const taxMatch = cleaned.match(/(?:Property\s+)?Tax(?:es)?[\s:]*\$?([\d,]+(?:\.\d{1,2})?)/i);
+  if (taxMatch) out.propertyTaxes = taxMatch[1].replace(/,/g, '');
+
+  // Insurance
+  const insMatch = cleaned.match(/(?:Homeowners?\s+)?Insurance[\s:]*\$?([\d,]+(?:\.\d{1,2})?)/i);
+  if (insMatch) out.insurance = insMatch[1].replace(/,/g, '');
+
+  // MI / PMI
+  const miMatch = cleaned.match(/Mortgage\s+Insurance[\s:]*\$?([\d,]+(?:\.\d{1,2})?)/i);
+  if (miMatch) out.pmi = miMatch[1].replace(/,/g, '');
+
+  // Sale price / home value
+  const priceMatch = cleaned.match(/(?:Sale\s+Price|Property\s+Value|Appraised\s+Value)[\s:]*\$?([\d,]+)/i);
+  if (priceMatch) out.homeValue = priceMatch[1].replace(/,/g, '');
+
+  // ZIP
+  const zipMatch = cleaned.match(/\b(\d{5})(?:-\d{4})?\b/);
+  if (zipMatch) out.zip = zipMatch[1];
+
+  // Loan type
+  if (/\bFHA\b/i.test(cleaned)) out.loanType = 'fha';
+  else if (/\bVA\b/i.test(cleaned)) out.loanType = 'va';
+  else if (/\bUSDA\b/i.test(cleaned)) out.loanType = 'usda';
+  else if (/\bJumbo\b/i.test(cleaned)) out.loanType = 'jumbo';
+  else out.loanType = 'conventional';
+
+  return out;
+}
+
+// ============================================================================
+// COMPARISON ENGINE
+// ============================================================================
+function buildComparison(q) {
+  const principal = parseNum(q.loanAmount);
+  const theirRate = parseNum(q.interestRate);
+  const term = parseInt(q.termYears, 10) || 30;
+  const theirClosing = parseNum(q.closingCosts) || 0;
+  let theirMonthlyPI = parseNum(q.monthlyPI);
+  if (!isFinite(theirMonthlyPI)) theirMonthlyPI = monthlyPI(principal, theirRate, term);
+
+  // Determine our comparable rate
+  let ourRate, rateLow, rateHigh, rateLabel;
+  const key = `${q.loanType}${term}`;
+  const configured = LO.pricing && LO.pricing[key];
+
+  if (LO.estimateMode === 'specific' && configured) {
+    ourRate = configured;
+    rateLow = configured;
+    rateHigh = configured;
+    rateLabel = 'Estimated comparable rate';
+  } else {
+    // Conservative: show a range. Center = either configured base or their rate - 0.25
+    const center = configured || Math.max(theirRate - 0.25, 5.5);
+    rateLow = center - 0.125;
+    rateHigh = center + 0.125;
+    ourRate = center;
+    rateLabel = 'Estimated rate range in today’s market';
+  }
+
+  const ourMonthlyPI = monthlyPI(principal, ourRate, term);
+  const ourMonthlyPILow = monthlyPI(principal, rateHigh, term); // higher rate = higher P&I = "low savings"
+  const ourMonthlyPIHigh = monthlyPI(principal, rateLow, term);
+
+  const theirTotalInt = totalInterest(principal, theirRate, term);
+  const ourTotalInt = totalInterest(principal, ourRate, term);
+  const ourTotalIntLow = totalInterest(principal, rateHigh, term);
+  const ourTotalIntHigh = totalInterest(principal, rateLow, term);
+
+  const ourClosing = (LO.fees?.origination || 0) + (LO.fees?.underwriting || 0) + (LO.fees?.processing || 0);
+
+  const monthlyDiff = theirMonthlyPI - ourMonthlyPI;
+  const monthlyDiffLow = theirMonthlyPI - ourMonthlyPILow;
+  const monthlyDiffHigh = theirMonthlyPI - ourMonthlyPIHigh;
+
+  const lifetimeDiff = theirTotalInt - ourTotalInt;
+  const lifetimeDiffLow = theirTotalInt - ourTotalIntLow;
+  const lifetimeDiffHigh = theirTotalInt - ourTotalIntHigh;
+
+  // Break-even on fees (if our fees are higher but rate is lower)
+  let breakEvenMonths = null;
+  const feeDiff = ourClosing - theirClosing;
+  if (feeDiff > 0 && monthlyDiff > 0) {
+    breakEvenMonths = Math.ceil(feeDiff / monthlyDiff);
+  }
+
+  return {
+    principal,
+    term,
+    their: {
+      rate: theirRate,
+      monthlyPI: theirMonthlyPI,
+      totalInterest: theirTotalInt,
+      closingCosts: theirClosing
+    },
+    ours: {
+      rate: ourRate,
+      rateLow,
+      rateHigh,
+      rateLabel,
+      monthlyPI: ourMonthlyPI,
+      monthlyPILow: ourMonthlyPILow,
+      monthlyPIHigh: ourMonthlyPIHigh,
+      totalInterest: ourTotalInt,
+      totalInterestLow: ourTotalIntLow,
+      totalInterestHigh: ourTotalIntHigh,
+      closingCosts: ourClosing
+    },
+    monthlyDiff,
+    monthlyDiffLow,
+    monthlyDiffHigh,
+    lifetimeDiff,
+    lifetimeDiffLow,
+    lifetimeDiffHigh,
+    breakEvenMonths,
+    mode: LO.estimateMode || 'conservative'
+  };
+}
+
+// ============================================================================
+// LEAD SUBMISSION
+// ============================================================================
+async function submitLead() {
+  const payload = {
+    timestamp: new Date().toISOString(),
+    loanOfficer: LO.name,
+    loanOfficerNmls: LO.nmlsId,
+    lead: { ...state.lead },
+    quote: { ...state.quote },
+    sourcePage: window.location.href,
+    referrer: document.referrer || ''
+  };
+
+  if (!LO.webhookUrl) {
+    console.warn('No webhook URL configured. Lead data:', payload);
+    return { ok: true, note: 'no-webhook' };
+  }
+
+  try {
+    // Google Apps Script expects a simple POST. Use no-cors as fallback to bypass CORS preflight.
+    const res = await fetch(LO.webhookUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    return { ok: true };
+  } catch (e) {
+    console.error('Lead submit error', e);
+    return { ok: false, error: e.message };
+  }
+}
+
+// ============================================================================
+// RENDERING
+// ============================================================================
+function render() {
+  const app = $('#app');
+  app.innerHTML = `
+    ${renderHeader()}
+    <main class="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-10">
+      ${renderStepper()}
+      <div class="fade-in">${renderStep()}</div>
+    </main>
+    ${renderFooter()}
+  `;
+  attachListeners();
+}
+
+function renderHeader() {
+  const stateBadges = (LO.statesLicensed || []).map(s => `<span class="inline-block px-2 py-0.5 bg-white/20 rounded text-xs">${s}</span>`).join(' ');
+  const photo = LO.photoUrl
+    ? `<img src="${LO.photoUrl}" alt="${LO.name}" class="w-12 h-12 rounded-full border-2 border-white object-cover" />`
+    : `<div class="w-12 h-12 rounded-full bg-white/20 border-2 border-white flex items-center justify-center font-bold">${(LO.name||'').split(' ').map(s=>s[0]).join('').slice(0,2)}</div>`;
+  return `
+    <header class="bg-brand text-white">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3 min-w-0">
+          ${photo}
+          <div class="min-w-0">
+            <div class="font-semibold truncate">${LO.name}</div>
+            <div class="text-xs opacity-80 truncate">${LO.title || 'Mortgage Loan Officer'} · NMLS #${LO.nmlsId}</div>
+          </div>
+        </div>
+        <div class="hidden sm:flex flex-col items-end gap-1">
+          <div class="text-xs opacity-80">${LO.company}</div>
+          <div class="flex gap-1">${stateBadges}</div>
+        </div>
+      </div>
+    </header>
+  `;
+}
+
+function renderStepper() {
+  const steps = [
+    { id: 'intro', label: 'Start' },
+    { id: 'input', label: 'Your Quote' },
+    { id: 'review', label: 'Review' },
+    { id: 'leadcapture', label: 'Your Info' },
+    { id: 'results', label: 'Results' }
+  ];
+  const currentIdx = (() => {
+    if (state.step === 'intro') return 0;
+    if (state.step === 'upload' || state.step === 'manual') return 1;
+    if (state.step === 'review') return 2;
+    if (state.step === 'leadcapture') return 3;
+    return 4;
+  })();
+  return `
+    <div class="flex items-center justify-between mb-6 sm:mb-10 px-2 overflow-x-auto">
+      ${steps.map((s, i) => `
+        <div class="flex items-center ${i < steps.length - 1 ? 'flex-1' : ''} min-w-0">
+          <div class="flex flex-col items-center gap-1">
+            <div class="step-dot ${i < currentIdx ? 'done' : i === currentIdx ? 'active' : 'todo'}">
+              ${i < currentIdx ? '&#10003;' : i + 1}
+            </div>
+            <div class="text-xs ${i === currentIdx ? 'text-brand font-semibold' : 'text-gray-500'} whitespace-nowrap">${s.label}</div>
+          </div>
+          ${i < steps.length - 1 ? `<div class="flex-1 h-px ${i < currentIdx ? 'bg-emerald-500' : 'bg-gray-300'} mx-2"></div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderStep() {
+  switch (state.step) {
+    case 'intro': return renderIntro();
+    case 'upload': return renderUpload();
+    case 'manual': return renderManual();
+    case 'review': return renderReview();
+    case 'leadcapture': return renderLeadCapture();
+    case 'results': return renderResults();
+    default: return renderIntro();
+  }
+}
+
+function renderIntro() {
+  return `
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-10">
+      <h1 class="text-2xl sm:text-3xl font-bold text-brand mb-2">${LO.headline || 'See How Your Mortgage Quote Stacks Up'}</h1>
+      <p class="text-gray-600 mb-8">${LO.subheadline || 'Get a side-by-side, no-pressure comparison in under 2 minutes.'}</p>
+
+      <div class="grid sm:grid-cols-2 gap-4">
+        <button data-action="choose-upload" class="text-left p-6 border-2 border-gray-200 rounded-xl hover:border-brand hover:shadow-md transition-all bg-white">
+          <div class="flex items-center gap-3 mb-2">
+            <svg class="w-8 h-8 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            <h3 class="font-semibold text-lg">Upload Your Quote</h3>
+          </div>
+          <p class="text-gray-600 text-sm">Upload a Loan Estimate or pre-qualification PDF and we'll pull the details automatically.</p>
+        </button>
+
+        <button data-action="choose-manual" class="text-left p-6 border-2 border-gray-200 rounded-xl hover:border-brand hover:shadow-md transition-all bg-white">
+          <div class="flex items-center gap-3 mb-2">
+            <svg class="w-8 h-8 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            <h3 class="font-semibold text-lg">Enter Details Manually</h3>
+          </div>
+          <p class="text-gray-600 text-sm">Type in your loan amount, rate, and a few other quick details from your quote.</p>
+        </button>
+      </div>
+
+      <div class="mt-8 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+        <p class="disclaimer">
+          <strong class="text-amber-900">Important:</strong> This tool provides an illustrative comparison for educational purposes only.
+          It is not an offer to extend credit or a commitment to lend. Actual rates and terms depend on full credit review,
+          property appraisal, and other factors. All loans subject to approval. Equal Housing Lender.
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+function renderUpload() {
+  return `
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-10">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl sm:text-2xl font-bold text-brand">Upload Your Loan Estimate</h2>
+        <button data-action="back-intro" class="text-sm text-gray-500 hover:text-brand">&larr; Back</button>
+      </div>
+      <p class="text-gray-600 mb-6">Drag and drop a PDF, or click to select. We'll extract the key terms.</p>
+
+      <label class="block">
+        <div id="dropzone" class="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer hover:border-brand hover:bg-brand-soft transition-all">
+          <svg class="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+          <div class="font-medium text-gray-700">Drop your PDF here or click to browse</div>
+          <div class="text-sm text-gray-500 mt-1">Loan Estimate, Closing Disclosure, or quote sheet</div>
+        </div>
+        <input id="pdf-input" type="file" accept="application/pdf" class="hidden" />
+      </label>
+
+      <div id="upload-status" class="mt-4"></div>
+
+      <div class="mt-6 flex justify-between items-center">
+        <button data-action="switch-manual" class="text-sm text-brand underline">Skip the upload — enter manually</button>
+      </div>
+
+      <p class="disclaimer mt-6">
+        Your file is processed in your browser — it is not uploaded to a server. We only save the lead information you submit below.
+      </p>
+    </div>
+  `;
+}
+
+function renderManual() {
+  const q = state.quote;
+  return `
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-10">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl sm:text-2xl font-bold text-brand">Enter Your Quote Details</h2>
+        <button data-action="back-intro" class="text-sm text-gray-500 hover:text-brand">&larr; Back</button>
+      </div>
+      <p class="text-gray-600 mb-6">Fill in what you have from your quote. We'll fill the rest with reasonable defaults.</p>
+
+      <form id="manual-form" class="space-y-4">
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Loan Type</label>
+            <select name="loanType" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2">
+              <option value="conventional" ${q.loanType==='conventional'?'selected':''}>Conventional</option>
+              <option value="fha" ${q.loanType==='fha'?'selected':''}>FHA</option>
+              <option value="va" ${q.loanType==='va'?'selected':''}>VA</option>
+              <option value="jumbo" ${q.loanType==='jumbo'?'selected':''}>Jumbo</option>
+              <option value="usda" ${q.loanType==='usda'?'selected':''}>USDA</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Purpose</label>
+            <select name="purpose" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2">
+              <option value="purchase" ${q.purpose==='purchase'?'selected':''}>Purchase</option>
+              <option value="refinance" ${q.purpose==='refinance'?'selected':''}>Refinance</option>
+              <option value="cashout" ${q.purpose==='cashout'?'selected':''}>Cash-out refinance</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Loan Amount *</label>
+            <input name="loanAmount" type="text" inputmode="numeric" required value="${q.loanAmount}" placeholder="$350,000" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Interest Rate * (%)</label>
+            <input name="interestRate" type="text" inputmode="decimal" required value="${q.interestRate}" placeholder="6.875" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Loan Term</label>
+            <select name="termYears" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2">
+              <option value="30" ${q.termYears==30?'selected':''}>30 years</option>
+              <option value="25" ${q.termYears==25?'selected':''}>25 years</option>
+              <option value="20" ${q.termYears==20?'selected':''}>20 years</option>
+              <option value="15" ${q.termYears==15?'selected':''}>15 years</option>
+              <option value="10" ${q.termYears==10?'selected':''}>10 years</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Monthly P&amp;I (if known)</label>
+            <input name="monthlyPI" type="text" inputmode="decimal" value="${q.monthlyPI}" placeholder="$2,299" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Home Value / Sale Price</label>
+            <input name="homeValue" type="text" inputmode="numeric" value="${q.homeValue}" placeholder="$425,000" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Property ZIP</label>
+            <input name="zip" type="text" inputmode="numeric" maxlength="5" value="${q.zip}" placeholder="85001" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <details class="mt-4">
+          <summary class="cursor-pointer text-sm font-medium text-brand">Show advanced fees & escrow (optional)</summary>
+          <div class="mt-4 grid sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Total Closing Costs</label>
+              <input name="closingCosts" type="text" inputmode="numeric" value="${q.closingCosts}" placeholder="$8,500" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Discount Points</label>
+              <input name="points" type="text" inputmode="decimal" value="${q.points}" placeholder="0" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Property Taxes (monthly)</label>
+              <input name="propertyTaxes" type="text" inputmode="decimal" value="${q.propertyTaxes}" placeholder="$350" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Insurance (monthly)</label>
+              <input name="insurance" type="text" inputmode="decimal" value="${q.insurance}" placeholder="$110" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">PMI / MIP (monthly)</label>
+              <input name="pmi" type="text" inputmode="decimal" value="${q.pmi}" placeholder="$0" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Credit Score Range</label>
+              <select name="creditScore" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2">
+                <option value="740+" ${q.creditScore==='740+'?'selected':''}>740+</option>
+                <option value="700-739" ${q.creditScore==='700-739'?'selected':''}>700-739</option>
+                <option value="660-699" ${q.creditScore==='660-699'?'selected':''}>660-699</option>
+                <option value="620-659" ${q.creditScore==='620-659'?'selected':''}>620-659</option>
+                <option value="below-620" ${q.creditScore==='below-620'?'selected':''}>Below 620</option>
+                <option value="unsure" ${q.creditScore==='unsure'?'selected':''}>Not sure</option>
+              </select>
+            </div>
+          </div>
+        </details>
+
+        <div class="pt-4 flex justify-end">
+          <button type="submit" class="btn-primary px-6 py-3 rounded-lg font-semibold">Continue &rarr;</button>
+        </div>
+      </form>
+    </div>
+  `;
+}
+
+function renderReview() {
+  const q = state.quote;
+  return `
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-10">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl sm:text-2xl font-bold text-brand">Review Your Information</h2>
+        <button data-action="${state.path === 'upload' ? 'back-upload' : 'back-manual'}" class="text-sm text-gray-500 hover:text-brand">&larr; Edit</button>
+      </div>
+      <p class="text-gray-600 mb-6">Make sure this matches your quote. Click any value to correct it.</p>
+
+      <dl class="divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
+        ${reviewRow('Loan Type', String(q.loanType).toUpperCase())}
+        ${reviewRow('Purpose', q.purpose === 'purchase' ? 'Purchase' : q.purpose === 'cashout' ? 'Cash-out Refinance' : 'Refinance')}
+        ${reviewRow('Loan Amount', q.loanAmount ? fmtMoney(parseNum(q.loanAmount)) : '—')}
+        ${reviewRow('Interest Rate', q.interestRate ? fmtPct(parseNum(q.interestRate)) : '—')}
+        ${reviewRow('Loan Term', q.termYears + ' years')}
+        ${reviewRow('Monthly P&I', q.monthlyPI ? fmtMoney(parseNum(q.monthlyPI)) : 'Will calculate')}
+        ${reviewRow('Closing Costs', q.closingCosts ? fmtMoney(parseNum(q.closingCosts)) : '—')}
+        ${reviewRow('Home Value', q.homeValue ? fmtMoney(parseNum(q.homeValue)) : '—')}
+        ${reviewRow('Property ZIP', q.zip || '—')}
+      </dl>
+
+      <div class="mt-6 flex justify-between">
+        <button data-action="${state.path === 'upload' ? 'back-upload' : 'back-manual'}" class="text-brand underline">Edit details</button>
+        <button data-action="to-leadcapture" class="btn-primary px-6 py-3 rounded-lg font-semibold">Looks Good &rarr;</button>
+      </div>
+    </div>
+  `;
+}
+
+function reviewRow(label, value) {
+  return `
+    <div class="flex justify-between px-4 py-3 bg-gray-50 even:bg-white">
+      <dt class="text-sm text-gray-600">${label}</dt>
+      <dd class="text-sm font-medium text-gray-900">${value}</dd>
+    </div>
+  `;
+}
+
+function renderLeadCapture() {
+  const l = state.lead;
+  return `
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-10">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl sm:text-2xl font-bold text-brand">Where Should We Send Your Comparison?</h2>
+        <button data-action="back-review" class="text-sm text-gray-500 hover:text-brand">&larr; Back</button>
+      </div>
+      <p class="text-gray-600 mb-6">Your comparison is ready. Enter your contact info to view it and have ${LO.name} follow up if you'd like to discuss.</p>
+
+      <form id="lead-form" class="space-y-4">
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+            <input name="firstName" required value="${l.firstName}" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+            <input name="lastName" required value="${l.lastName}" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+          <input name="email" type="email" required value="${l.email}" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+          <input name="phone" type="tel" required value="${l.phone}" placeholder="(555) 555-5555" class="ring-brand w-full border border-gray-300 rounded-lg px-3 py-2" />
+        </div>
+
+        <div class="space-y-3 pt-2">
+          <label class="flex items-start gap-3 text-sm text-gray-700">
+            <input name="consent" type="checkbox" ${l.consent?'checked':''} required class="mt-1" />
+            <span>I'd like to receive my comparison and have ${LO.name} contact me about my mortgage options. I understand this is not an application or offer of credit.</span>
+          </label>
+          <label class="flex items-start gap-3 text-xs text-gray-600">
+            <input name="tcpa" type="checkbox" ${l.tcpa?'checked':''} required class="mt-1" />
+            <span>
+              <strong>TCPA Consent:</strong> By checking this box, I authorize ${LO.name} and ${LO.company} (NMLS #${LO.companyNmlsId || LO.nmlsId}) to contact me at the phone number and email provided, including via automated telephone dialing system, prerecorded messages, text messages (SMS/MMS) and email. Consent is not a condition of any service. Message and data rates may apply. I can opt out at any time by replying STOP.
+            </span>
+          </label>
+        </div>
+
+        <div id="lead-error" class="hidden p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800"></div>
+
+        <div class="pt-4 flex justify-end">
+          <button type="submit" id="lead-submit" class="btn-primary px-6 py-3 rounded-lg font-semibold">
+            ${state.submitting ? 'Submitting…' : 'See My Comparison &rarr;'}
+          </button>
+        </div>
+      </form>
+
+      <p class="disclaimer mt-6">
+        We respect your privacy. Information submitted is used only by ${LO.name} to provide your comparison and follow up about mortgage options.
+        See your loan officer's privacy policy at ${LO.website || 'their website'} for details.
+      </p>
+    </div>
+  `;
+}
+
+function renderResults() {
+  const r = state.results;
+  if (!r) return `<div class="text-center py-12 text-gray-500">Calculating…</div>`;
+
+  const isConservative = r.mode !== 'specific';
+  const positiveMonthly = r.monthlyDiff > 0;
+
+  // Range strings for conservative mode
+  const monthlyText = isConservative
+    ? `${fmtMoney(Math.min(r.monthlyDiffLow, r.monthlyDiffHigh))} – ${fmtMoney(Math.max(r.monthlyDiffLow, r.monthlyDiffHigh))}`
+    : fmtMoney(r.monthlyDiff);
+
+  const lifetimeText = isConservative
+    ? `${fmtMoney(Math.min(r.lifetimeDiffLow, r.lifetimeDiffHigh))} – ${fmtMoney(Math.max(r.lifetimeDiffLow, r.lifetimeDiffHigh))}`
+    : fmtMoney(r.lifetimeDiff);
+
+  const ourRateText = isConservative
+    ? `${fmtPct(r.ours.rateLow)} – ${fmtPct(r.ours.rateHigh)}`
+    : fmtPct(r.ours.rate);
+
+  const ourPIText = isConservative
+    ? `${fmtMoney(Math.min(r.ours.monthlyPILow, r.ours.monthlyPIHigh))} – ${fmtMoney(Math.max(r.ours.monthlyPILow, r.ours.monthlyPIHigh))}`
+    : fmtMoney(r.ours.monthlyPI);
+
+  const ourInterestText = isConservative
+    ? `${fmtMoney(Math.min(r.ours.totalInterestLow, r.ours.totalInterestHigh))} – ${fmtMoney(Math.max(r.ours.totalInterestLow, r.ours.totalInterestHigh))}`
+    : fmtMoney(r.ours.totalInterest);
+
+  return `
+    <div class="space-y-6">
+      <!-- Hero Result Card -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="bg-brand text-white p-6 sm:p-8">
+          <div class="text-sm uppercase tracking-wide opacity-80 mb-1">Your Illustrative Comparison</div>
+          <div class="flex items-end gap-2 flex-wrap">
+            <div class="text-3xl sm:text-4xl font-bold">
+              ${positiveMonthly ? 'Potential savings:' : 'Estimated difference:'}
+            </div>
+          </div>
+          <div class="text-2xl sm:text-3xl mt-2 ${positiveMonthly ? '' : 'opacity-80'}">
+            <strong>${monthlyText}</strong> <span class="text-base opacity-80">/ month</span>
+          </div>
+          <div class="text-sm mt-1 opacity-80">
+            ${positiveMonthly ? `Up to <strong>${lifetimeText}</strong> over the life of the loan` : `Over the life of the loan: ${lifetimeText}`}
+          </div>
+        </div>
+
+        <div class="p-6 sm:p-8">
+          <div class="grid sm:grid-cols-2 gap-6">
+            <!-- Their Quote -->
+            <div class="border border-gray-200 rounded-xl p-5">
+              <div class="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Your Current Quote</div>
+              <div class="space-y-2 text-sm">
+                ${rowLabel('Interest Rate', fmtPct(r.their.rate))}
+                ${rowLabel('Loan Amount', fmtMoney(r.principal))}
+                ${rowLabel('Term', r.term + ' years')}
+                ${rowLabel('Monthly P&amp;I', fmtMoney(r.their.monthlyPI))}
+                ${rowLabel('Total Interest', fmtMoney(r.their.totalInterest))}
+                ${r.their.closingCosts > 0 ? rowLabel('Est. Closing Costs', fmtMoney(r.their.closingCosts)) : ''}
+              </div>
+            </div>
+
+            <!-- Our Comparable -->
+            <div class="border-2 border-brand rounded-xl p-5 bg-brand-soft">
+              <div class="text-xs uppercase tracking-wide text-brand font-semibold mb-3">
+                ${r.ours.rateLabel}
+              </div>
+              <div class="space-y-2 text-sm">
+                ${rowLabel('Interest Rate', ourRateText)}
+                ${rowLabel('Loan Amount', fmtMoney(r.principal))}
+                ${rowLabel('Term', r.term + ' years')}
+                ${rowLabel('Monthly P&amp;I', ourPIText)}
+                ${rowLabel('Total Interest', ourInterestText)}
+                ${r.ours.closingCosts > 0 ? rowLabel('Est. Lender Fees', fmtMoney(r.ours.closingCosts)) : ''}
+              </div>
+            </div>
+          </div>
+
+          ${r.breakEvenMonths ? `
+            <div class="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
+              <strong>Break-even point:</strong> Approximately ${r.breakEvenMonths} months — that's when the monthly savings would offset any difference in upfront fees.
+            </div>
+          ` : ''}
+        </div>
+      </div>
+
+      <!-- LO CTA -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+          ${LO.photoUrl
+            ? `<img src="${LO.photoUrl}" alt="${LO.name}" class="w-20 h-20 rounded-full object-cover border-2 border-brand" />`
+            : `<div class="w-20 h-20 rounded-full bg-brand text-white flex items-center justify-center text-2xl font-bold flex-shrink-0">${(LO.name||'').split(' ').map(s=>s[0]).join('').slice(0,2)}</div>`}
+          <div class="flex-1 min-w-0">
+            <div class="text-xl font-bold text-brand">${LO.name}</div>
+            <div class="text-sm text-gray-600">${LO.title || 'Mortgage Loan Officer'} · NMLS #${LO.nmlsId}</div>
+            <div class="text-sm text-gray-600">${LO.company}</div>
+            ${LO.phone ? `<div class="text-sm text-gray-600 mt-1">${LO.phone}</div>` : ''}
+            <div class="text-sm text-gray-600">${LO.email}</div>
+          </div>
+          <div class="flex flex-col gap-2 w-full sm:w-auto">
+            ${LO.bookingLink ? `<a href="${LO.bookingLink}" target="_blank" rel="noopener" class="btn-primary text-center px-6 py-3 rounded-lg font-semibold">Book a 15-min Call</a>` : ''}
+            ${LO.applicationLink ? `<a href="${LO.applicationLink}" target="_blank" rel="noopener" class="btn-outline text-center px-6 py-3 rounded-lg font-semibold">Start an Application</a>` : ''}
+          </div>
+        </div>
+
+        <div class="mt-6 p-4 bg-gray-50 rounded-lg">
+          <p class="text-sm text-gray-700">
+            <strong>What's next?</strong> ${LO.name.split(' ')[0]} will reach out to walk through your comparison, answer questions, and confirm what your actual rate and terms could look like based on a full credit review.
+          </p>
+        </div>
+      </div>
+
+      <!-- Print/Save -->
+      <div class="text-center">
+        <button onclick="window.print()" class="text-brand underline text-sm">Print this comparison</button>
+      </div>
+    </div>
+  `;
+}
+
+function rowLabel(label, value) {
+  return `<div class="flex justify-between"><span class="text-gray-600">${label}</span><span class="font-semibold text-gray-900">${value}</span></div>`;
+}
+
+function renderFooter() {
+  return `
+    <footer class="bg-gray-100 border-t border-gray-200 mt-12 print:hidden">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+        <div class="flex items-start gap-4 mb-4">
+          <svg class="w-10 h-10 text-gray-400 flex-shrink-0" viewBox="0 0 100 100" fill="currentColor"><path d="M50 10 L10 35 L20 35 L20 80 L80 80 L80 35 L90 35 Z M35 80 L35 55 L65 55 L65 80 Z" /><text x="50" y="48" text-anchor="middle" font-size="10" fill="white">EHL</text></svg>
+          <div>
+            <p class="disclaimer">
+              ${LO.complianceFooter || 'All loans subject to approval. Equal Housing Lender.'}
+            </p>
+          </div>
+        </div>
+        <div class="text-xs text-gray-500 text-center">
+          Powered by Gray Home Mortgage Tools
+        </div>
+      </div>
+    </footer>
+  `;
+}
+
+// ============================================================================
+// EVENT HANDLERS
+// ============================================================================
+function attachListeners() {
+  // Action buttons
+  document.querySelectorAll('[data-action]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      const action = el.dataset.action;
+      handleAction(action, e);
+    });
+  });
+
+  // PDF upload
+  const pdfInput = $('#pdf-input');
+  const dropzone = $('#dropzone');
+  if (pdfInput) pdfInput.addEventListener('change', (e) => handlePdfFile(e.target.files[0]));
+  if (dropzone) {
+    dropzone.addEventListener('click', () => pdfInput.click());
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('border-brand','bg-brand-soft'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('border-brand','bg-brand-soft'));
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.classList.remove('border-brand','bg-brand-soft');
+      if (e.dataTransfer.files[0]) handlePdfFile(e.dataTransfer.files[0]);
+    });
+  }
+
+  // Manual form
+  const manualForm = $('#manual-form');
+  if (manualForm) {
+    manualForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const fd = new FormData(manualForm);
+      Object.keys(state.quote).forEach(k => {
+        if (fd.has(k)) state.quote[k] = fd.get(k);
+      });
+      if (!parseNum(state.quote.loanAmount) || !parseNum(state.quote.interestRate)) {
+        alert('Please enter both a loan amount and an interest rate.');
+        return;
+      }
+      state.step = 'review';
+      render();
+    });
+  }
+
+  // Lead capture
+  const leadForm = $('#lead-form');
+  if (leadForm) {
+    leadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (state.submitting) return;
+      const fd = new FormData(leadForm);
+      const lead = {
+        firstName: fd.get('firstName')?.trim() || '',
+        lastName: fd.get('lastName')?.trim() || '',
+        email: fd.get('email')?.trim() || '',
+        phone: fd.get('phone')?.trim() || '',
+        consent: !!fd.get('consent'),
+        tcpa: !!fd.get('tcpa')
+      };
+      const errEl = $('#lead-error');
+      errEl.classList.add('hidden');
+      const errors = [];
+      if (!lead.firstName || !lead.lastName) errors.push('Please enter your full name.');
+      if (!validateEmail(lead.email)) errors.push('Please enter a valid email.');
+      if (!validatePhone(lead.phone)) errors.push('Please enter a valid phone number.');
+      if (!lead.consent || !lead.tcpa) errors.push('Both consent checkboxes are required to receive your comparison.');
+      if (errors.length) {
+        errEl.textContent = errors.join(' ');
+        errEl.classList.remove('hidden');
+        return;
+      }
+      state.lead = lead;
+      state.submitting = true;
+      $('#lead-submit').textContent = 'Submitting…';
+      $('#lead-submit').disabled = true;
+
+      // Calculate comparison
+      state.results = buildComparison(state.quote);
+
+      // Submit lead (fire and forget; we still show results even if webhook fails)
+      await submitLead();
+
+      state.submitting = false;
+      state.step = 'results';
+      render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
+}
+
+function handleAction(action) {
+  switch (action) {
+    case 'choose-upload':
+      state.path = 'upload';
+      state.step = 'upload';
+      render();
+      break;
+    case 'choose-manual':
+      state.path = 'manual';
+      state.step = 'manual';
+      render();
+      break;
+    case 'switch-manual':
+      state.path = 'manual';
+      state.step = 'manual';
+      render();
+      break;
+    case 'back-intro':
+      state.step = 'intro';
+      render();
+      break;
+    case 'back-upload':
+      state.step = 'upload';
+      render();
+      break;
+    case 'back-manual':
+      state.step = 'manual';
+      render();
+      break;
+    case 'back-review':
+      state.step = 'review';
+      render();
+      break;
+    case 'to-leadcapture':
+      state.step = 'leadcapture';
+      render();
+      break;
+  }
+}
+
+async function handlePdfFile(file) {
+  if (!file || file.type !== 'application/pdf') {
+    $('#upload-status').innerHTML = `<div class="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">Please upload a PDF file.</div>`;
+    return;
+  }
+  $('#upload-status').innerHTML = `
+    <div class="flex items-center gap-2 text-brand">
+      <svg class="spinner w-5 h-5" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="60 100" /></svg>
+      <span class="text-sm">Reading your PDF…</span>
+    </div>
+  `;
+  try {
+    const text = await extractPdfText(file);
+    const parsed = parseLoanEstimate(text);
+    state.pdfText = text;
+
+    // Merge parsed values into quote
+    Object.keys(parsed).forEach(k => {
+      if (parsed[k]) state.quote[k] = parsed[k];
+    });
+
+    $('#upload-status').innerHTML = `
+      <div class="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-800">
+        <strong>Got it!</strong> We extracted what we could. Please review and confirm next.
+      </div>
+    `;
+    setTimeout(() => {
+      state.step = 'manual'; // use manual form pre-filled for confirmation
+      state.path = 'upload';
+      render();
+    }, 700);
+  } catch (e) {
+    console.error(e);
+    $('#upload-status').innerHTML = `
+      <div class="p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-900">
+        We couldn't read this PDF automatically. No problem — <button data-action="switch-manual" class="underline font-semibold">enter your details manually</button> and we'll go from there.
+      </div>
+    `;
+    document.querySelectorAll('[data-action]').forEach(el => {
+      el.addEventListener('click', () => handleAction(el.dataset.action));
+    });
+  }
+}
+
+// ============================================================================
+// INIT
+// ============================================================================
+render();
+</script>
+
+<style media="print">
+  header, footer, button { display: none !important; }
+  body { background: white; }
+</style>
+
+</body>
+</html>
